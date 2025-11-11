@@ -6,6 +6,9 @@ const chatWindow = document.getElementById("chatWindow");
 // Set initial message
 chatWindow.textContent = "👋 Hello! How can I help you today?";
 
+// Cloudflare Worker url
+const workerUrl = 'https://loreal-app-worker.giovanni-rosati.workers.dev/';
+
 /* Handle form submit */
 chatForm.addEventListener("submit", (e) => {
   e.preventDefault();
