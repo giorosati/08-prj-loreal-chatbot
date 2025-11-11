@@ -114,6 +114,34 @@ body {
   outline-offset: 2px;
 }
 
+.chat-controls {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.clear-button {
+  background: #000000;
+  color: #FFFFFF;
+  border: 1px solid #E3A635;
+  padding: 8px 16px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.3s, color 0.3s;
+}
+
+.clear-button:hover {
+  background: #FF003B;
+  color: #FFFFFF;
+}
+
+.clear-button:focus {
+  outline: 2px solid #FF003B;
+  outline-offset: 2px;
+}
+
 /* visually hidden */
 .visually-hidden {
   position: absolute;

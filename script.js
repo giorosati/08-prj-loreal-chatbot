@@ -2,6 +2,7 @@
 const chatForm = document.getElementById("chatForm");
 const userInput = document.getElementById("userInput");
 const chatWindow = document.getElementById("chatWindow");
+const clearBtn = document.getElementById("clearBtn");
 
 // Debug startup: make it easy to see if the script loaded and elements exist
 console.log('[chat] script loaded');
@@ -9,8 +10,11 @@ if (!chatForm) console.error('[chat] chatForm element not found (id=chatForm)');
 if (!userInput) console.error('[chat] userInput element not found (id=userInput)');
 if (!chatWindow) console.error('[chat] chatWindow element not found (id=chatWindow)');
 
+const INITIAL_GREETING = "Hello! How can I help you today?";
+const STORAGE_KEY = "loreal-chat-history";
+
 // Set initial message
-chatWindow.textContent = "Hello! How can I help you today?";
+chatWindow.textContent = INITIAL_GREETING;
 
 // Cloudflare Worker url
 const workerUrl = 'https://loreal-app-worker.giovanni-rosati.workers.dev/';
@@ -18,22 +22,111 @@ const workerUrl = 'https://loreal-app-worker.giovanni-rosati.workers.dev/';
 // L'Oreal-specific guardrail so every reply stays on brand
 const systemPrompt = "You are the L'Oreal Smart Product Advisor. Only answer questions about L'Oreal products, skincare routines, ingredients, or recommendations. Politely decline anything else.";
 
+let chatHistory = [];
+
+function getSystemMessage() {
+  return { role: 'system', content: systemPrompt };
+}
+
+function loadChatHistory() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+      return [getSystemMessage()];
+    }
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) {
+      return [getSystemMessage()];
+    }
+    const filtered = parsed.filter((msg) => msg && typeof msg.role === 'string' && typeof msg.content === 'string');
+    if (filtered.length === 0 || filtered[0].role !== 'system') {
+      filtered.unshift(getSystemMessage());
+    } else {
+      filtered[0].content = systemPrompt;
+    }
+    return filtered;
+  } catch (err) {
+    console.warn('[chat] failed to load history from storage', err);
+    return [getSystemMessage()];
+  }
+}
+
+function saveChatHistory() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistory));
+  } catch (err) {
+    console.warn('[chat] failed to save history to storage', err);
+  }
+}
+
+function createMessageElement(text, sender = 'bot') {
+  const message = document.createElement('div');
+  message.className = `message ${sender}`;
+  message.textContent = text;
+  return message;
+}
+
+function renderConversation() {
+  chatWindow.innerHTML = '';
+  const visibleMessages = chatHistory.filter((msg) => msg.role !== 'system');
+
+  if (visibleMessages.length === 0) {
+    chatWindow.textContent = INITIAL_GREETING;
+    return;
+  }
+
+  visibleMessages.forEach((msg) => {
+    const sender = msg.role === 'user' ? 'user' : 'bot';
+    chatWindow.appendChild(createMessageElement(msg.content, sender));
+  });
+  chatWindow.scrollTop = chatWindow.scrollHeight;
+}
+
+function extractText(content) {
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part === 'object') {
+          if (typeof part.text === 'string') return part.text;
+          if (typeof part.content === 'string') return part.content;
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (content && typeof content === 'object' && typeof content.text === 'string') {
+    return content.text;
+  }
+  return String(content ?? '');
+}
+
+function resetConversation() {
+  chatHistory = [getSystemMessage()];
+  saveChatHistory();
+  renderConversation();
+  userInput.value = '';
+  userInput.focus();
+}
+
+chatHistory = loadChatHistory();
+renderConversation();
+
 
 /**
  * Append a message to the chat window.
  * sender: 'user' | 'bot'
  */
 function appendMessage(text, sender = 'bot') {
-  // Remove the initial welcome text when the first message is added
-  if (chatWindow.textContent === "Hello! How can I help you today?") {
+  if (chatWindow.textContent === INITIAL_GREETING) {
     chatWindow.textContent = '';
   }
 
-  const message = document.createElement('div');
-  message.className = `message ${sender}`;
-  message.textContent = text;
-  chatWindow.appendChild(message);
-  // keep viewport scrolled to the bottom
+  chatWindow.appendChild(createMessageElement(text, sender));
   chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
@@ -48,7 +141,9 @@ chatForm.addEventListener('submit', (e) => {
   console.log('[chat] user input:', text);
   if (!text) return; // ignore empty submits
 
-  // Append user message to the chat window
+  // Append user message to history and UI
+  chatHistory.push({ role: 'user', content: text });
+  saveChatHistory();
   appendMessage(text, 'user');
 
   // Clear the input for the next message
@@ -70,10 +165,7 @@ chatForm.addEventListener('submit', (e) => {
 
       const payload = {
         model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: text }
-        ]
+        messages: chatHistory
       };
 
       const res = await fetch(workerUrl, {
@@ -90,15 +182,29 @@ chatForm.addEventListener('submit', (e) => {
       // Attempt to parse JSON; fall back to text if not JSON
       const contentType = res.headers.get('content-type') || '';
       let botResponse;
+      let assistantMessage;
       if (contentType.includes('application/json')) {
         const data = await res.json();
-        botResponse = data.choices?.[0]?.message?.content ?? data.result ?? JSON.stringify(data);
+        assistantMessage = data.choices?.[0]?.message;
+        botResponse = extractText(assistantMessage?.content ?? data.result ?? '');
+        if (!botResponse) {
+          botResponse = JSON.stringify(data);
+        }
       } else {
         botResponse = await res.text();
       }
 
       thinking.remove();
       appendMessage(botResponse, 'bot');
+
+      if (assistantMessage) {
+        const content = extractText(assistantMessage.content);
+        chatHistory.push({ role: assistantMessage.role || 'assistant', content });
+        saveChatHistory();
+      } else if (botResponse) {
+        chatHistory.push({ role: 'assistant', content: botResponse });
+        saveChatHistory();
+      }
     } catch (err) {
       console.error('Worker request failed', err);
       thinking.remove();
@@ -106,3 +212,7 @@ chatForm.addEventListener('submit', (e) => {
     }
   })();
 });
+
+if (clearBtn) {
+  clearBtn.addEventListener('click', resetConversation);
+}
