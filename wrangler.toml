@@ -1,0 +1,5 @@
+name = "loreal-app-worker"
+main = "RESOURCE_cloudflare-worker.js"
+compatibility_date = "2025-11-11"
+# Optional: add your Cloudflare account ID to make publish explicit
+# account_id = "<your-account-id>"
