@@ -10,7 +10,7 @@ if (!userInput) console.error('[chat] userInput element not found (id=userInput)
 if (!chatWindow) console.error('[chat] chatWindow element not found (id=chatWindow)');
 
 // Set initial message
-chatWindow.textContent = "👋 Hello! How can I help you today?";
+chatWindow.textContent = "Hello! How can I help you today?";
 
 // Cloudflare Worker url
 const workerUrl = 'https://loreal-app-worker.giovanni-rosati.workers.dev/';
@@ -25,7 +25,7 @@ const systemPrompt = "You are the L'Oreal Smart Product Advisor. Only answer que
  */
 function appendMessage(text, sender = 'bot') {
   // Remove the initial welcome text when the first message is added
-  if (chatWindow.textContent === "👋 Hello! How can I help you today?") {
+  if (chatWindow.textContent === "Hello! How can I help you today?") {
     chatWindow.textContent = '';
   }
 
